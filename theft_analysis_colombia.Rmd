@@ -1,0 +1,273 @@
+---
+title: "Theft Analysis in Colombia: Annual Trend and Seasonality"
+author: "Santiago Toro"
+date: "06/14/26"
+output:
+  pdf_document:
+    toc: true
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)  
+library(lubridate)   
+library(janitor)     
+```
+
+# 1. Introduction
+
+This project analyzes the dataset **"Reporte Hurto por Modalidades Policía
+Nacional"** (Theft Report by Modalities - National Police), published on
+Colombia's Open Data portal (https://www.datos.gov.co), provided by the
+Dirección General de la Policía Nacional - DIPON. The dataset contains
+individual theft case records in Colombia (modalities such as theft from
+persons, residences, vehicles, businesses, motorcycles, livestock theft
+"abigeato", financial institutions, and highway robbery "piratería"), with
+variables for department, municipality, DANE code, weapon or means used,
+date of the incident, victim's gender and age group, type of theft, and
+number of cases.
+
+**Research questions:**
+
+1. How has the number of thefts in Colombia evolved year by year? Is there a
+   clear trend (increase, decrease, or stability)?
+2. Is there seasonality in thefts? Are there months of the year where
+   consistently more cases are reported?
+
+# 2. Loading and Initial Exploration of the Data
+
+```{r load-data}
+
+hurtos <- read_csv("hurtos.csv",
+                    locale = locale(encoding = "UTF-8"))
+
+
+glimpse(hurtos)
+```
+
+```{r clean-names}
+
+hurtos <- hurtos %>% clean_names()
+names(hurtos)
+```
+
+```{r initial-summary}
+summary(hurtos)
+
+
+table(hurtos$tipo_de_hurto)
+
+
+range(hurtos$fecha_hecho)
+```
+
+# 3. Data Cleaning
+
+```{r clean-dates}
+hurtos <- hurtos %>%
+  mutate(
+    fecha_hecho = dmy(fecha_hecho),     
+    year = year(fecha_hecho),
+    month = month(fecha_hecho)
+  )
+
+
+sum(is.na(hurtos$fecha_hecho))
+
+
+table(hurtos$year)
+```
+
+The dataset covers from January 2010 to March 2026. This
+means **2010 and 2026 are likely NOT complete years**, which would distort
+the trend and the monthly comparison. For this reason, for the trend and
+seasonality analysis we will only use complete years (2011-2025). Adjust this
+range based on what you see in the table above.
+
+```{r filter-complete-years}
+hurtos_complete <- hurtos %>%
+  filter(year >= 2011, year <= 2025)
+```
+
+# 4. General Exploratory Data Analysis (EDA)
+
+Before answering the main research questions, let's look at the overall
+picture of the dataset.
+
+```{r eda-theft-type}
+hurtos_complete %>%
+  group_by(tipo_de_hurto) %>%
+  summarise(total = sum(cantidad, na.rm = TRUE)) %>%
+  arrange(desc(total)) %>%
+  ggplot(aes(x = reorder(tipo_de_hurto, total), y = total)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Total cases by theft type (2011-2025)",
+       x = "Theft type", y = "Total cases") +
+  theme_minimal()
+```
+
+**Note on this dataset:** in this particular file, the majority of
+records correspond to **HURTO ABIGEATO** (livestock theft)  about 85% of
+all rows (37,548 out of 44,169)  while **HURTO PIRATERÍA TERRESTRE** (highway
+robbery, 4,841 cases) and **HURTO ENTIDADES FINANCIERAS** (theft from
+financial institutions, 1,780 cases) make up the rest. Keep this in mind when
+interpreting the results below: the overall patterns are heavily driven by
+livestock theft.
+
+```{r eda-departments}
+hurtos_complete %>%
+  group_by(departamento) %>%
+  summarise(total = sum(cantidad, na.rm = TRUE)) %>%
+  arrange(desc(total)) %>%
+  slice_head(n = 10) %>%
+  ggplot(aes(x = reorder(departamento, total), y = total)) +
+  geom_col(fill = "darkorange") +
+  coord_flip() +
+  labs(title = "Top 10 departments with the most thefts (2011-2025)",
+       x = "Department", y = "Total cases") +
+  theme_minimal()
+```
+
+```{r eda-gender}
+hurtos_complete %>%
+  filter(genero %in% c("MASCULINO", "FEMENINO")) %>%
+  group_by(genero) %>%
+  summarise(total = sum(cantidad, na.rm = TRUE)) %>%
+  ggplot(aes(x = genero, y = total, fill = genero)) +
+  geom_col() +
+  labs(title = "Total thefts by victim gender (2011-2025)",
+       x = "Gender", y = "Total cases") +
+  theme_minimal()
+```
+
+# 5. Research Question 1: Annual Evolution of Thefts
+
+```{r q1-table}
+hurtos_annual <- hurtos_complete %>%
+  group_by(year) %>%
+  summarise(total = sum(cantidad, na.rm = TRUE))
+
+hurtos_annual
+```
+
+```{r q1-plot}
+ggplot(hurtos_annual, aes(x = year, y = total)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(size = 2, color = "steelblue") +
+  labs(title = "Annual evolution of thefts in Colombia (2011-2025)",
+       x = "Year", y = "Total reported cases") +
+  theme_minimal()
+```
+
+```{r q1-regression}
+trend_model <- lm(total ~ year, data = hurtos_annual)
+summary(trend_model)
+```
+
+**How to interpret this result:**
+
+- The coefficient for `year` indicates how much the total number of thefts
+  changes (on average) for each additional year. If positive, the trend is
+  increasing; if negative, decreasing.
+- The **p-value** associated with that coefficient tells you whether this
+  trend is statistically significant (usually considered significant if
+  p < 0.05).
+- The **R-squared** indicates what proportion of the year-to-year variation
+  is explained by a simple linear trend.
+
+**Results for this dataset:** the annual totals rise from 1,884 cases in
+2011 to a peak of 5,741 cases in 2017, and then decline steadily to 957 cases
+in 2025. The regression coefficient for `year` is -66.13 with p = 0.379 (not
+significant), and R-squared is only 0.06. This low fit is expected: the data
+does **not** follow a straight line — it rises for several years and then
+falls, forming a peak around 2017. A simple linear trend is therefore not the
+right way to describe this pattern; a more accurate description is "rise then
+decline," with the overall direction since 2017 being a sustained decrease.
+
+# 6. Research Question 2: Seasonality
+
+## 6.1 Total Thefts by Month (All Years Combined)
+
+```{r q2-monthly}
+hurtos_monthly <- hurtos_complete %>%
+  group_by(month) %>%
+  summarise(total = sum(cantidad, na.rm = TRUE))
+
+ggplot(hurtos_monthly, aes(x = factor(month), y = total)) +
+  geom_col(fill = "darkorange") +
+  labs(title = "Total thefts by month (2011-2025, all years combined)",
+       x = "Month (1 = January, 12 = December)", y = "Total cases") +
+  theme_minimal()
+```
+
+## 6.2 Monthly Distribution Across Years (Boxplot)
+
+```{r q2-boxplot}
+hurtos_month_year <- hurtos_complete %>%
+  group_by(year, month) %>%
+  summarise(total = sum(cantidad, na.rm = TRUE), .groups = "drop")
+
+ggplot(hurtos_month_year, aes(x = factor(month), y = total)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Distribution of monthly thefts across years (2011-2025)",
+       x = "Month (1 = January, 12 = December)", y = "Total cases") +
+  theme_minimal()
+```
+
+## 6.3 Statistical Test: Does the Month Influence the Total Number of Thefts?
+
+```{r q2-anova}
+month_anova <- aov(total ~ factor(month), data = hurtos_month_year)
+summary(month_anova)
+```
+
+**How to interpret this result:**
+
+- The ANOVA compares the total number of thefts across the 12 months (using
+  each year-month combination as one observation).
+- If the **p-value** is below 0.05, there is evidence that at least one
+  month has a significantly different average than the others, i.e.,
+  evidence of seasonality.
+- Combine this result with the bar chart (6.1) to identify *which* months
+  tend to have more or fewer cases (for example, does December stand out?).
+
+**Results for this dataset:** the ANOVA gives F = 0.444 and p = 0.934, which
+is far from significant — there is no statistical evidence that the month of
+the year affects the total number of thefts. Looking at the bar chart, January
+has the highest total (~4,100 cases) and October-December are slightly lower
+(~3,200 cases), but this difference is small relative to the year-to-year
+variability shown in the boxplot, which is why it does not reach statistical
+significance.
+
+# 7. Conclusions
+
+**Annual trend:** the number of reported thefts did not follow a simple
+increasing or decreasing trend over 2011-2025. Instead, cases rose from 2011
+through a peak in 2017 (5,741 cases), and have declined steadily every year
+since, reaching 957 cases in 2025 — the lowest value in the series. The
+overall linear regression was not statistically significant (p = 0.379,
+$R^2$ = 0.06), confirming that a straight-line trend does not adequately describe
+this rise-then-fall pattern.
+
+**Seasonality:** there is no statistically significant evidence of
+seasonality (ANOVA p = 0.934). While January shows a slightly higher total
+than other months, the difference is small compared to the variability
+between years, so it cannot be considered a reliable seasonal pattern.
+
+**Context:** these results are heavily influenced by **HURTO ABIGEATO**
+(livestock theft), which represents about 85% of all records in this dataset.
+This also helps explain why the departments with the most cases (Cundinamarca,
+Cesar, Tolima, Antioquia, Meta, etc.) are largely rural/agricultural regions,
+and why the majority of victims are male (~31,000 vs ~7,000 female) —
+consistent with patterns of livestock ownership in Colombia.
+
+**Limitations:** the data come from official police reports and may not
+capture unreported cases. The years 2010 and 2026 were excluded from the
+analysis because they were incomplete. Additionally, since this dataset only
+contains three theft modalities (livestock, financial institutions, and
+highway robbery), these conclusions apply specifically to these types of
+theft and should not be generalized to all forms of theft in Colombia (e.g.,
+theft from persons or residences, which are reported in separate datasets).
