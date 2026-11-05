@@ -179,8 +179,8 @@ summary(trend_model)
   is explained by a simple linear trend.
 
 **Results for this dataset:** the annual totals rise from 1,884 cases in
-2011 to a peak of 5,741 cases in 2017, and then decline steadily to 957 cases
-in 2025. The regression coefficient for `year` is -66.13 with p = 0.379 (not
+2011 to a peak of 5,741 cases in 2017, and then decline to 957 cases in 2025,
+with one small uptick in 2022. The regression coefficient for `year` is -66.13 with p = 0.379 (not
 significant), and R-squared is only 0.06. This low fit is expected: the data
 does **not** follow a straight line — it rises for several years and then
 falls, forming a peak around 2017. A simple linear trend is therefore not the
@@ -246,8 +246,8 @@ significance.
 
 **Annual trend:** the number of reported thefts did not follow a simple
 increasing or decreasing trend over 2011-2025. Instead, cases rose from 2011
-through a peak in 2017 (5,741 cases), and have declined steadily every year
-since, reaching 957 cases in 2025 — the lowest value in the series. The
+through a peak in 2017 (5,741 cases), and have declined since (apart from a
+small uptick in 2022), reaching 957 cases in 2025 — the lowest value in the series. The
 overall linear regression was not statistically significant (p = 0.379,
 $R^2$ = 0.06), confirming that a straight-line trend does not adequately describe
 this rise-then-fall pattern.
